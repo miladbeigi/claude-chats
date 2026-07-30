@@ -1,5 +1,7 @@
 # claude-chats
 
+[![CI](https://github.com/miladbeigi/claude-chats/actions/workflows/ci.yml/badge.svg)](https://github.com/miladbeigi/claude-chats/actions/workflows/ci.yml)
+
 Browse, resume and delete [Claude Code](https://claude.com/claude-code) chats from your terminal.
 
 Claude Code keeps every conversation as a JSON transcript under `~/.claude/projects/`, but offers no way to
