@@ -48,6 +48,19 @@ jobs:
       # works with nothing but a checkout and a Ruby.
       - run: rake install
       - run: claude-chats --version
-      - run: claude-chats --list
+
+      - name: list a Claude home with no chats
+        run: |
+          mkdir -p "$CLAUDE_CONFIG_DIR/projects"
+          claude-chats --list
         env:
           CLAUDE_CONFIG_DIR: ${{ runner.temp }}/empty-claude-home
+
+      - name: report a missing Claude home instead of crashing
+        run: |
+          if claude-chats --list; then
+            echo "expected a non-zero exit for a missing Claude home"
+            exit 1
+          fi
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/no-such-claude-home
