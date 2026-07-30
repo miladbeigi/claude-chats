@@ -1,0 +1,59 @@
+AllCops:
+  TargetRubyVersion: 3.1
+  # New cops are opted into deliberately, so a RuboCop release cannot turn CI red.
+  NewCops: disable
+  SuggestExtensions: false
+
+Layout/LineLength:
+  Max: 120
+
+# A terminal UI is naturally a bigger class than a value object. These limits are
+# raised to what the code actually needs rather than switched off.
+Metrics/ClassLength:
+  Max: 300
+  Exclude:
+    - 'test/**/*'
+
+# Tests read as linear scripts: a list of assertions is clearer in one method
+# than split up to satisfy a size limit.
+Metrics/MethodLength:
+  Max: 25
+  Exclude:
+    - 'test/**/*'
+
+Metrics/AbcSize:
+  Max: 25
+  Exclude:
+    - 'test/**/*'
+
+Metrics/CyclomaticComplexity:
+  Max: 13
+
+Metrics/PerceivedComplexity:
+  Max: 13
+
+Metrics/ParameterLists:
+  Max: 8
+  CountKeywordArgs: false
+
+Metrics/BlockLength:
+  Exclude:
+    - 'test/**/*'
+    - '*.gemspec'
+    - 'Rakefile'
+
+Style/Documentation:
+  Exclude:
+    - 'test/**/*'
+
+# Aligning hash values in tables of constants reads better than one space.
+Layout/HashAlignment:
+  EnforcedHashRocketStyle:
+    - key
+    - table
+
+Layout/ExtraSpacing:
+  AllowForAlignment: true
+
+Naming/VariableNumber:
+  Enabled: false
