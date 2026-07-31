@@ -24,9 +24,19 @@ j/k move · o open · d mark · D all · u none · / filter · Enter delete mark
 
 Requires Ruby 3.1 or newer. No gem dependencies — the standard library is all it uses.
 
+The repository ships with a `mise.toml` that pins Ruby 3.4. If you use
+[mise](https://mise.jdx.dev), it will automatically activate the right Ruby version:
+
+```sh
+mise install   # install Ruby 3.4 (first time only)
+```
+
+Then install the gem:
+
 ```sh
 git clone https://github.com/miladbeigi/claude-chats.git
 cd claude-chats
+mise install        # install pinned Ruby (skip if already done)
 rake install
 ```
 
@@ -96,6 +106,7 @@ ignored and unparseable lines skipped — but treat it as best-effort. Built and
 ## Development
 
 ```sh
+mise install            # activate the pinned Ruby
 bundle install
 bundle exec rake        # tests and RuboCop
 bundle exec rake test
