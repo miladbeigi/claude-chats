@@ -81,6 +81,15 @@ module ClaudeChats
       assert_equal 'good line', only_session.title
     end
 
+    # A single bad byte anywhere in a transcript used to raise out of #normalise
+    # and take the whole listing with it.
+    def test_invalid_utf8_does_not_take_the_listing_down
+      record = JSON.generate(builder.user('cafe crash')).b.sub('cafe'.b, "caf\xe9".b)
+      builder.write_lines(id: 'a', lines: [record])
+
+      assert_equal "caf\u{FFFD} crash", only_session.title
+    end
+
     def test_non_object_json_lines_are_ignored
       path = builder.chat(id: 'a', text: 'good line')
       File.write(path, "[1,2,3]\n#{File.read(path)}")

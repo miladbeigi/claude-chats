@@ -13,10 +13,16 @@ module ClaudeChats
 
     # Writes a transcript file and returns its path.
     def write(id:, records:, project: DEFAULT_PROJECT, mtime: nil)
+      write_lines(id: id, lines: records.map { |record| JSON.generate(record) },
+                  project: project, mtime: mtime)
+    end
+
+    # Verbatim lines, for malformed JSON and half-written records.
+    def write_lines(id:, lines:, project: DEFAULT_PROJECT, mtime: nil)
       dir = File.join(@paths.projects, project)
       FileUtils.mkdir_p(dir)
       file = File.join(dir, "#{id}.jsonl")
-      File.write(file, records.map { |record| "#{JSON.generate(record)}\n" }.join)
+      File.write(file, lines.map { |line| "#{line}\n" }.join)
       File.utime(mtime, mtime, file) if mtime
       file
     end
@@ -49,6 +55,27 @@ module ClaudeChats
         'isSidechain' => sidechain,
         'message' => { 'role' => 'assistant', 'content' => [{ 'type' => 'text', 'text' => text }] },
         'cwd' => cwd
+      }
+    end
+
+    # Most of a real agentic chat is these two: content parts with no text, so
+    # nothing a preview can show.
+    def tool_use(name = 'Bash', cwd: DEFAULT_CWD)
+      {
+        'type' => 'assistant',
+        'isSidechain' => false,
+        'cwd' => cwd,
+        'message' => { 'role' => 'assistant',
+                       'content' => [{ 'type' => 'tool_use', 'name' => name, 'input' => { 'command' => 'ls' } }] }
+      }
+    end
+
+    def tool_result(text = 'ok')
+      {
+        'type' => 'user',
+        'isSidechain' => false,
+        'cwd' => DEFAULT_CWD,
+        'message' => { 'role' => 'user', 'content' => [{ 'type' => 'tool_result', 'content' => text }] }
       }
     end
 

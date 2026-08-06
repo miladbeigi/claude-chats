@@ -32,8 +32,8 @@ Claude home (the missing case must exit non-zero).
 
 ## Architecture
 
-Dependencies point one way: `CLI` → `Browser` → `Terminal`/`Launcher`, with `Paths`, `Session` and
-`Ansi` as leaves. Two design rules make the whole thing testable in-process:
+Dependencies point one way: `CLI` → `Browser` → `Terminal`/`Launcher`/`Preview`, with `Paths`,
+`Session`, `Records` and `Ansi` as leaves. Two design rules make the whole thing testable in-process:
 
 - **Nothing reads global state directly.** `Paths` resolves `CLAUDE_CONFIG_DIR`,
   `CLAUDE_CODE_SESSION_ID` and `PATH` from an injected `env` hash, not `ENV` at load time. `Time` is
@@ -48,6 +48,9 @@ Roles:
 
 - `lib/claude_chats/paths.rb` — the single place that knows Claude Code's on-disk layout
   (`projects/`, `session-env/`, `trash/`).
+- `records.rb` — what a transcript record *is*: the noise patterns, text extraction, and the scrub
+  that keeps one bad byte from taking down a listing. Both readers go through it, so the format is
+  understood in one place.
 - `session_loader.rb` — one pass over each `*.jsonl` transcript pulling out only what the list needs.
   Title precedence is `custom-title` → `ai-title` → first human message → slash command name →
   `(empty chat)`. Slash-command/hook wrapper records (`NOISE`) are excluded from the message count,
@@ -58,7 +61,13 @@ Roles:
 - `terminal.rb` — the only file touching `IO.console`, raw-mode reads and escape-sequence decoding.
   `Browser` speaks solely to this interface, which is what `FakeTerminal` replaces.
 - `browser.rb` — the full-screen list: key dispatch table (`ACTIONS`), scrolling, rendering,
-  confirmation and deletion.
+  confirmation and deletion. It sets the `Metrics/ClassLength` limit, which is why the pane lives
+  next door rather than inside it.
+- `preview_loader.rb` / `preview.rb` — the right-hand pane, opened with `p` and closed by default.
+  The loader *seeks to the end* of one transcript rather than scanning it, widening the window when a
+  tail of tool calls holds no prose; the renderer wraps turns into a fixed number of lines and
+  composes them beside the list. Nothing is read until the pane is open, and then only the
+  highlighted row — which is what keeps a per-keystroke read affordable.
 - `launcher.rb` — finds `claude` by walking `PATH` (via `Paths`), then `Dir.chdir` + `exec`.
 
 ### Invariants worth preserving
@@ -72,6 +81,10 @@ Roles:
   blockers are checked up front and surface as a status line, never a dead shell.
 - **`Terminal#restore` runs in an `ensure`,** so an exception cannot leave the user in the alternate
   screen or raw mode.
+- **`Esc` never touches the preview pane.** It backs out of the filter, then the marks; only `p`
+  toggles the pane. Losing the pane on the way to clearing a filter is a surprise.
+- **The pane comes out of the width budget, never on top of it,** and occupies the rows the list
+  already has, so it cannot change how tall or wide the screen is.
 - **Rendered lines never reach the terminal width** (they would soft-wrap and shift the layout);
   width is `@terminal.width - 1`, clamped. Truncating a line that carries colour codes appends a
   reset so a severed sequence cannot colour the rest of the screen.

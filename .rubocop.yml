@@ -8,9 +8,10 @@ Layout/LineLength:
   Max: 120
 
 # A terminal UI is naturally a bigger class than a value object. These limits are
-# raised to what the code actually needs rather than switched off.
+# raised to what the code actually needs rather than switched off. Browser sets
+# the number; the preview pane lives in Preview precisely to keep it near this.
 Metrics/ClassLength:
-  Max: 300
+  Max: 320
   Exclude:
     - 'test/**/*'
 

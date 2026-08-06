@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-06
+
+### Added
+
+- <kbd>p</kbd> opens a preview beside the list, showing the last few turns of the highlighted chat so
+  two similarly named chats can be told apart before deleting one. Closed by default, and unavailable
+  on terminals too narrow to hold both. Tool calls and their results are skipped, and only the
+  highlighted chat's transcript is read — from the end, so a megabyte-long chat costs no more than a
+  short one.
+
+### Fixed
+
+- A transcript containing an invalid UTF-8 byte no longer takes down the whole listing.
+
 ## [0.1.0] - 2026-07-30
 
 First release.
@@ -23,5 +37,6 @@ First release.
 - `--list`, `--project`, `--version` and `--help`.
 - Honours `CLAUDE_CONFIG_DIR`.
 
-[Unreleased]: https://github.com/miladbeigi/claude-chats/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/miladbeigi/claude-chats/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/miladbeigi/claude-chats/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/miladbeigi/claude-chats/releases/tag/v0.1.0

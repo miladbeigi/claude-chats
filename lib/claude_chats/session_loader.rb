@@ -5,13 +5,9 @@ module ClaudeChats
   #
   # The on-disk format is a JSON-per-line log that Claude Code does not document
   # as an API, so everything here is defensive: unknown record types are ignored
-  # and unparseable lines are skipped rather than fatal.
+  # and unparseable lines are skipped rather than fatal. What counts as a message
+  # lives in Records, shared with the preview.
   class SessionLoader
-    # Wrapper records the CLI writes around slash commands and hook output. Real
-    # conversation, from a human's point of view, they are not.
-    NOISE = /\A<(local-command-caveat|local-command-stdout|local-command-stderr|system-reminder)/
-    COMMAND_NAME = %r{<command-name>(/?[^<]+)</command-name>}
-
     NO_MESSAGES = '(empty chat)'
 
     def initialize(paths: Paths.new, clock: Time)
@@ -73,10 +69,10 @@ module ClaudeChats
       found[:cwd]    ||= record['cwd']
       found[:branch] ||= record['gitBranch']
 
-      text = normalise(extract_text(record.dig('message', 'content')))
-      return if text.empty? || text.match?(NOISE)
+      text = normalise(Records.extract_text(record.dig('message', 'content')))
+      return if text.empty? || text.match?(Records::NOISE)
 
-      command = text.match(COMMAND_NAME)
+      command = text.match(Records::COMMAND_NAME)
       found[:command] ||= command[1] if command
       found[:messages] += 1
       return unless record['type'] == 'user' && record.dig('origin', 'kind') == 'human'
@@ -93,22 +89,11 @@ module ClaudeChats
     end
 
     def parse_line(line)
-      record = JSON.parse(line)
-      record.is_a?(Hash) ? record : nil
-    rescue JSON::ParserError
-      nil
-    end
-
-    def extract_text(content)
-      case content
-      when String then content
-      when Array
-        content.filter_map { |part| part['text'] if part.is_a?(Hash) && part['type'] == 'text' }.join(' ')
-      end
+      Records.parse_line(line)
     end
 
     def normalise(text)
-      text.to_s.gsub(/\s+/, ' ').strip
+      Records.normalise(text)
     end
   end
 end

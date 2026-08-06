@@ -238,6 +238,101 @@ module ClaudeChats
       assert_includes drive(keys: []).last_frame, '●'
     end
 
+    # --- the preview pane ----------------------------------------------------
+
+    # The pane is off until asked for, so every test here opens it with p first.
+    def test_p_opens_the_pane_on_what_the_highlighted_chat_said
+      two_part_chat(id: 'a', title: 'why does the deploy hang', reply: 'the migration lock is held')
+
+      refute_includes screen_text(drive(keys: [])), 'the migration lock is held'
+      assert_includes screen_text(drive(keys: ['p'])), 'the migration lock is held'
+    end
+
+    def test_p_closes_the_pane_again
+      two_part_chat(id: 'a', title: 'a chat', reply: 'only visible in the pane')
+
+      refute_includes screen_text(drive(keys: %w[p p])), 'only visible in the pane'
+    end
+
+    def test_the_pane_follows_the_cursor
+      two_part_chat(id: 'a', title: 'the first chat', reply: 'reply from the first')
+      two_part_chat(id: 'b', title: 'the second chat', reply: 'reply from the second', mtime: NOW - 60)
+      moved = screen_text(drive(keys: %w[p j]))
+
+      assert_includes moved, 'reply from the second'
+      refute_includes moved, 'reply from the first'
+    end
+
+    # The pane's columns come out of the list, so opening it drops the size and
+    # narrows the project; closing it hands them back.
+    def test_opening_the_pane_gives_up_the_size_column
+      two_part_chat(id: 'a', title: 'a chat', reply: 'a reply')
+      size = load_sessions(clock: clock_at(NOW)).first.size
+
+      assert_includes screen_text(drive(keys: [])), size
+      refute_includes screen_text(drive(keys: ['p'])), size
+      assert_includes screen_text(drive(keys: %w[p p])), size
+    end
+
+    # Below the floor the list needs every column it can get, so asking for the
+    # pane gets you nothing rather than a list too narrow to read.
+    def test_the_pane_is_suppressed_on_a_narrow_terminal
+      two_part_chat(id: 'a', title: 'a chat', reply: 'only visible in the pane')
+      narrow = screen_text(drive(keys: ['p'], width: 70))
+
+      refute_includes narrow, 'only visible in the pane'
+      assert_includes narrow, load_sessions(clock: clock_at(NOW)).first.size
+    end
+
+    def test_the_pane_does_not_change_the_height_of_the_screen
+      seed(3)
+
+      assert_equal drive(keys: [], height: 20).last_frame_lines.size,
+                   drive(keys: ['p'], height: 20).last_frame_lines.size
+    end
+
+    def test_a_filter_matching_nothing_leaves_the_pane_blank
+      seed(2)
+      terminal = drive(keys: ['p', '/'], answers: ['nothing matches this'])
+
+      assert_empty list_titles(terminal)
+      refute_includes screen_text(terminal), 'chat a'
+    end
+
+    def test_the_pane_follows_the_list_after_a_deletion
+      two_part_chat(id: 'a', title: 'the doomed chat', reply: 'reply from the doomed')
+      two_part_chat(id: 'b', title: 'the surviving chat', reply: 'reply from the survivor', mtime: NOW - 60)
+      terminal = drive(keys: %w[p d enter], answers: ['yes'])
+
+      assert_equal %w[b], transcripts
+      assert_includes screen_text(terminal), 'reply from the survivor'
+      refute_includes screen_text(terminal), 'reply from the doomed'
+    end
+
+    # Message text is unbounded and wraps rather than truncates, so the pane is
+    # the easiest way to push a line off the edge of the screen.
+    def test_a_long_message_does_not_widen_the_screen
+      builder.write(id: 'a', mtime: NOW, records: [
+                      builder.user('x' * 4000),
+                      builder.user("#{'y' * 300} tail"),
+                      builder.assistant(('word ' * 400).strip)
+                    ])
+
+      [80, 100, 173, 240].each do |width|
+        longest = drive(keys: ['p'], width: width).last_frame_lines.map(&:length).max
+
+        assert_operator longest, :<, width, "the pane filled the #{width}-column screen"
+      end
+    end
+
+    # Reading is safe, so unlike resume the pane does not refuse the live chat.
+    def test_the_running_chat_can_still_be_previewed
+      two_part_chat(id: 'a', title: 'the chat you are in', reply: 'still readable though')
+      env['CLAUDE_CODE_SESSION_ID'] = 'a'
+
+      assert_includes screen_text(drive(keys: ['p'])), 'still readable though'
+    end
+
     # --- rendering -----------------------------------------------------------
 
     # A row exactly as wide as the terminal soft-wraps and pushes the layout
@@ -341,6 +436,18 @@ module ClaudeChats
       ('a'..'z').first(count).each_with_index do |letter, index|
         builder.chat(id: letter, text: "chat #{letter}", mtime: NOW - index)
       end
+    end
+
+    # A chat whose title and last message differ, so an assertion about the pane
+    # cannot pass on the strength of the list row.
+    def two_part_chat(id:, title:, reply:, mtime: NOW)
+      builder.write(id: id, mtime: mtime, records: [builder.user(title), builder.assistant(reply)])
+    end
+
+    # Pane text wraps, so squash the screen back into one string — divider column
+    # and all — instead of depending on where a line happens to break.
+    def screen_text(terminal)
+      terminal.plain(terminal.last_frame).delete(Preview::DIVIDER.strip).gsub(/\s+/, ' ')
     end
 
     def drive_terminal(keys:, answers: [], width: 100, height: 20)

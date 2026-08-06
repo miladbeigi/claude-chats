@@ -11,6 +11,7 @@ module ClaudeChats
     RED     = "\e[31m"
     GREEN   = "\e[32m"
     YELLOW  = "\e[33m"
+    MAGENTA = "\e[35m"
     CYAN    = "\e[36m"
 
     CLEAR_SCREEN  = "\e[H\e[2J"
@@ -31,6 +32,24 @@ module ClaudeChats
     # Printable length of a string once colour codes are removed.
     def self.length(str)
       strip(str).length
+    end
+
+    # Cuts a rendered line that is already carrying colour codes. Appending a
+    # reset keeps a severed sequence from colouring the rest of the screen.
+    def self.truncate(line, max)
+      return line if length(line) <= max
+
+      "#{line[0, max]}#{RESET}"
+    end
+
+    # Cuts plain text to fit, marking that something was left out. Use #truncate
+    # instead for a line that already carries colour codes.
+    def self.clip(text, max)
+      text = text.to_s
+      return '' if max <= 0
+      return text if text.length <= max
+
+      max == 1 ? '…' : "#{text[0, max - 1]}…"
     end
 
     def self.move_to(row, column = 1)

@@ -13,7 +13,7 @@ module ClaudeChats
     MAX_WIDTH   = 200
     MIN_WIDTH   = 40
 
-    HELP = 'j/k move · o open · d mark · D all · u none · / filter · Enter delete marked · q quit'
+    HELP = 'j/k move · o open · p preview · d mark · D all · u none · / filter · Enter delete marked · q quit'
     CONFIRM_WORD = 'yes'
 
     # Every key the list responds to. Quitting is handled by the loop itself.
@@ -25,6 +25,7 @@ module ClaudeChats
       'd' => :toggle_mark,   ' ' => :toggle_mark,
       'D' => :mark_all,      'u' => :unmark_all,
       'o' => :stage_resume,  '/' => :prompt_filter,
+      'p' => :toggle_preview,
       'esc' => :clear_state, 'enter' => :confirm_and_delete
     }.freeze
 
@@ -32,14 +33,29 @@ module ClaudeChats
     META_WIDTH  = 6
     TITLE_FLOOR = 10
     PROJECT_WIDTH = 18
+    # With the pane open the columns have to come from somewhere: the project is
+    # narrower and the size goes, since the pane makes both less interesting.
+    COMPACT_PROJECT = 12
 
-    def initialize(sessions, terminal:, paths: Paths.new, launcher: nil, trash: false, clock: Time)
+    PANE_SHARE = 3
+    PANE_MIN   = 28
+    PANE_MAX   = 60
+    # Below this the pane would leave the list too narrow to read a title in, so
+    # the rows get the whole screen back instead.
+    PANE_FLOOR = 80
+
+    def initialize(sessions, terminal:, paths: Paths.new, launcher: nil, trash: false,
+                   clock: Time, previews: nil)
       @sessions = sessions
       @terminal = terminal
       @paths    = paths
       @launcher = launcher || Launcher.new(paths: paths)
       @trash    = trash
       @clock    = clock
+      @previews = previews || PreviewLoader.new(paths: paths)
+      # Off until asked for: the list is what you came for, and the pane costs it
+      # a third of its columns.
+      @preview  = false
       @marked   = {}
       @cursor   = 0
       @offset   = 0
@@ -109,6 +125,19 @@ module ClaudeChats
       (@terminal.width - 1).clamp(MIN_WIDTH, MAX_WIDTH)
     end
 
+    def preview?
+      @preview && width >= PANE_FLOOR
+    end
+
+    def list_width
+      width - (width / PANE_SHARE).clamp(PANE_MIN, PANE_MAX) - Preview::DIVIDER.length
+    end
+
+    # The columns a row has to render into, pane or no pane.
+    def row_width
+      preview? ? list_width : width
+    end
+
     def current
       visible[@cursor]
     end
@@ -151,6 +180,12 @@ module ClaudeChats
       @marked.clear
     end
 
+    # Escape deliberately does not reach this: it backs out of the filter and the
+    # marks, and losing the pane on the way to clearing a filter is a surprise.
+    def toggle_preview
+      @preview = !@preview
+    end
+
     def toggle_mark
       session = current or return
 
@@ -182,17 +217,28 @@ module ClaudeChats
       @offset = @offset.clamp(0, [visible.size - rows, 0].max)
     end
 
+    # The pane shares the rows the list occupies, so it can never change how tall
+    # the screen is; the help and status lines keep the full width.
     def draw
-      lines = [header, '']
-      slice = visible[@offset, rows] || []
-      slice.each_with_index { |session, i| lines << row(session, @offset + i == @cursor) }
-      (rows - slice.size).times { lines << '' }
-      lines << ''
-      lines << "#{Ansi::DIM}#{HELP}#{Ansi::RESET}"
+      band  = [header, '', *list_rows]
+      band  = pane.beside(band, list_width: list_width, width: width) if preview?
+      lines = [*band, '', "#{Ansi::DIM}#{HELP}#{Ansi::RESET}"]
       lines << "#{Ansi::YELLOW}#{@status}#{Ansi::RESET}" if @status
 
-      body = lines.map { |line| "#{truncate(line, width)}#{Ansi::CLEAR_LINE}" }.join("\r\n")
+      body = lines.map { |line| "#{Ansi.truncate(line, width)}#{Ansi::CLEAR_LINE}" }.join("\r\n")
       @terminal.write("#{Ansi::CLEAR_SCREEN}#{body}")
+    end
+
+    def list_rows
+      slice = visible[@offset, rows] || []
+      drawn = slice.each_with_index.map { |session, i| row(session, @offset + i == @cursor) }
+      drawn + Array.new(rows - slice.size, '')
+    end
+
+    # Reading the transcript is left until here, so it only ever happens for the
+    # row under the cursor, and only while the pane is actually on screen.
+    def pane
+      Preview.new(current, current ? @previews.turns_for(current) : [], now: now)
     end
 
     def header
@@ -206,16 +252,18 @@ module ClaudeChats
 
     def row(session, selected)
       meta  = meta_for(session)
-      room  = [width - Ansi.length(meta) - META_WIDTH, TITLE_FLOOR].max
-      title = truncate_plain(session.title, room)
+      room  = [row_width - Ansi.length(meta) - META_WIDTH, TITLE_FLOOR].max
+      title = Ansi.clip(session.title, room)
       line  = " #{mark_for(session)} #{title.ljust(room)}  #{Ansi::DIM}#{meta}#{Ansi::RESET}"
 
       selected ? "#{Ansi::REVERSE}#{Ansi.strip(line)}#{Ansi::RESET}" : line
     end
 
     def meta_for(session)
-      project = truncate_plain(session.project, PROJECT_WIDTH).ljust(PROJECT_WIDTH)
-      "#{session.age(now).rjust(9)}  #{project}  #{session.messages.to_s.rjust(4)} msg  #{session.size.rjust(5)}"
+      columns = preview? ? COMPACT_PROJECT : PROJECT_WIDTH
+      project = Ansi.clip(session.project, columns).ljust(columns)
+      meta    = "#{session.age(now).rjust(9)}  #{project}  #{session.messages.to_s.rjust(4)} msg"
+      preview? ? meta : "#{meta}  #{session.size.rjust(5)}"
     end
 
     def mark_for(session)
@@ -291,7 +339,7 @@ module ClaudeChats
     # Only as many as fit the screen; the rest are summarised on one line.
     def victim_lines(victims)
       lines = victims.first(rows).map do |session|
-        "  #{Ansi::RED}✗#{Ansi::RESET} #{truncate_plain(session.title, width - 34)}  " \
+        "  #{Ansi::RED}✗#{Ansi::RESET} #{Ansi.clip(session.title, width - 34)}  " \
           "#{Ansi::DIM}#{session.project} · #{session.age(now)}#{Ansi::RESET}"
       end
       lines << "  #{Ansi::DIM}… and #{victims.size - rows} more#{Ansi::RESET}" if victims.size > rows
@@ -333,6 +381,7 @@ module ClaudeChats
     def forget(session)
       @sessions.delete(session)
       @marked.delete(session.id)
+      @previews.forget(session.id)
       @deleted += 1
     end
 
@@ -351,22 +400,6 @@ module ClaudeChats
 
     def count(number)
       "#{number} chat#{'s' if number != 1}"
-    end
-
-    # Cuts a rendered line that is already carrying colour codes. Appending a
-    # reset keeps a severed sequence from colouring the rest of the screen.
-    def truncate(line, max)
-      return line if Ansi.length(line) <= max
-
-      "#{line[0, max]}#{Ansi::RESET}"
-    end
-
-    def truncate_plain(text, max)
-      text = text.to_s
-      return '' if max <= 0
-      return text if text.length <= max
-
-      max == 1 ? '…' : "#{text[0, max - 1]}…"
     end
   end
 end
