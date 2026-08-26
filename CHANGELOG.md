@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `make install` puts `claude-chats` on your PATH without going through RubyGems, so one install works
+  under every Ruby on the machine instead of only the one whose gem home received it. `make uninstall`,
+  `make reinstall` and `PREFIX=` are there too.
+
 ## [0.2.0] - 2026-08-06
 
 ### Added

@@ -46,23 +46,27 @@ while it is open the titles are shorter and the size column steps aside.
 
 Requires Ruby 3.1 or newer. No gem dependencies — the standard library is all it uses.
 
-The repository ships with a `mise.toml` that pins Ruby 3.4. If you use
-[mise](https://mise.jdx.dev), it will automatically activate the right Ruby version:
-
-```sh
-mise install   # install Ruby 3.4 (first time only)
-```
-
-Then install the gem:
-
 ```sh
 git clone https://github.com/miladbeigi/claude-chats.git
 cd claude-chats
-mise install        # install pinned Ruby (skip if already done)
-rake install
+make install
 ```
 
-That installs the `claude-chats` command. To remove it: `gem uninstall claude-chats`.
+That copies it into `~/.local` and puts `claude-chats` on your PATH. `make uninstall` removes it,
+`make reinstall` picks up a `git pull`, and `make install PREFIX=/usr/local` installs system-wide.
+
+Since there is nothing to resolve but the standard library, `make install` deliberately avoids gems and
+runs the code with whichever `ruby` is on your PATH. That matters if you use a version manager:
+`gem install` puts the command in the gem home of one Ruby only, so it vanishes the moment you switch
+— and the `mise.toml` here pins Ruby 3.4 for development, which need not be the Ruby you use day to
+day. One `make install` works under all of them.
+
+The gem route still works if you prefer it, but mind which Ruby is active when you run it:
+
+```sh
+mise install   # the pinned Ruby 3.4, first time only
+rake install   # then: gem uninstall claude-chats
+```
 
 ## Usage
 
